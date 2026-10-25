@@ -1,0 +1,482 @@
+-- by:killer
+-- Arsenal Hub Mobile v3.7 — Final Release
+-- *Otimizado para mobile, ESP culling, ColorPicker e painel toogls.*
+
+if getgenv().ArsenalMobileV3 then
+    pcall(function() getgenv().ArsenalMobileV3:Destroy() end)
+end
+
+local repo = 'https://raw.githubusercontent.com/thehogbro-byte/MobileLinoriaLib/main/'
+local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
+local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
+local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+local Stats = game:GetService("Stats")
+local Camera = Workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+local Config = {
+    AimbotEnabled = false,
+    AimSmooth = 0.35,
+    TargetPart = "Head",
+    FOVRadius = 150,
+    WallCheck = true,
+    ESPEnabled = false,
+    ESPBox = false,
+    ESPName = false,
+    ESPDistance = false,
+    ESPHealth = false,
+    ESPTracer = false,
+    ESPColor = Color3.fromRGB(50, 150, 255),
+    ShowFPS = false,
+    BypassStatus = "SAFE"
+}
+
+-- ========== FOV CIRCLE ==========
+local FovGui = Instance.new("ScreenGui")
+FovGui.Name = "ArsenalFov"
+FovGui.ResetOnSpawn = false
+FovGui.IgnoreGuiInset = true
+FovGui.Parent = gethui() or LocalPlayer:WaitForChild("PlayerGui")
+
+local FovCircle = Instance.new("Frame")
+FovCircle.AnchorPoint = Vector2.new(0.5, 0.5)
+FovCircle.Position = UDim2.new(0.5, 0, 0.5, 0)
+FovCircle.Size = UDim2.new(0, Config.FOVRadius * 2, 0, Config.FOVRadius * 2)
+FovCircle.BackgroundTransparency = 1
+FovCircle.Visible = false
+FovCircle.Parent = FovGui
+Instance.new("UICorner", FovCircle).CornerRadius = UDim.new(1, 0)
+local CircleStroke = Instance.new("UIStroke", FovCircle)
+CircleStroke.Color = Config.ESPColor
+CircleStroke.Thickness = 2
+CircleStroke.Transparency = 0.2
+
+-- ========== ESP GUI ==========
+local ESPGui = Instance.new("ScreenGui")
+ESPGui.Name = "ArsenalESP"
+ESPGui.ResetOnSpawn = false
+ESPGui.IgnoreGuiInset = true
+ESPGui.Parent = gethui() or LocalPlayer:WaitForChild("PlayerGui")
+
+local ESPElements = {}
+
+local function CreateESP(player)
+    if player == LocalPlayer or ESPElements[player] then return end
+    local container = Instance.new("Frame")
+    container.BackgroundTransparency = 1
+    container.Visible = false
+    container.ClipsDescendants = false
+    container.Parent = ESPGui
+
+    local box = Instance.new("Frame", container)
+    box.BackgroundTransparency = 1
+    box.BorderSizePixel = 0
+    box.Size = UDim2.new(1, 0, 1, 0)
+    box.ClipsDescendants = false
+
+    local top = Instance.new("Frame", box)
+    top.Size = UDim2.new(1, 0, 0, 1)
+    top.BackgroundColor3 = Config.ESPColor
+    top.BorderSizePixel = 0
+
+    local bottom = Instance.new("Frame", box)
+    bottom.Size = UDim2.new(1, 0, 0, 1)
+    bottom.Position = UDim2.new(0, 0, 1, -1)
+    bottom.BackgroundColor3 = Config.ESPColor
+    bottom.BorderSizePixel = 0
+
+    local left = Instance.new("Frame", box)
+    left.Size = UDim2.new(0, 1, 1, 0)
+    left.BackgroundColor3 = Config.ESPColor
+    left.BorderSizePixel = 0
+
+    local right = Instance.new("Frame", box)
+    right.Size = UDim2.new(0, 1, 1, 0)
+    right.Position = UDim2.new(1, -1, 0, 0)
+    right.BackgroundColor3 = Config.ESPColor
+    right.BorderSizePixel = 0
+
+    local tracer = Instance.new("Frame")
+    tracer.BackgroundColor3 = Config.ESPColor
+    tracer.BorderSizePixel = 0
+    tracer.AnchorPoint = Vector2.new(0.5, 0.5)
+    tracer.Visible = false
+    tracer.ZIndex = 1
+    tracer.Parent = ESPGui
+
+    local healthBg = Instance.new("Frame", container)
+    healthBg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    healthBg.BorderSizePixel = 0
+    healthBg.Size = UDim2.new(0, 3, 1, 0)
+    healthBg.Position = UDim2.new(0, -5, 0, 0)
+    healthBg.Visible = false
+
+    local healthFg = Instance.new("Frame", healthBg)
+    healthFg.BackgroundColor3 = Color3.fromRGB(0, 255, 0)
+    healthFg.BorderSizePixel = 0
+    healthFg.Size = UDim2.new(1, 0, 1, 0)
+
+    local textLabel = Instance.new("TextLabel", container)
+    textLabel.BackgroundTransparency = 1
+    textLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    textLabel.Font = Enum.Font.Gotham
+    textLabel.TextSize = 12
+    textLabel.TextStrokeTransparency = 0
+    textLabel.Size = UDim2.new(1, 0, 0, 20)
+    textLabel.Position = UDim2.new(0, 0, 0, -22)
+    textLabel.Visible = false
+
+    ESPElements[player] = {
+        container = container, box = box, parts = { top, bottom, left, right },
+        tracer = tracer, healthBg = healthBg, healthFg = healthFg, text = textLabel,
+        lastText = ""
+    }
+end
+
+for _, p in ipairs(Players:GetPlayers()) do CreateESP(p) end
+Players.PlayerAdded:Connect(CreateESP)
+Players.PlayerRemoving:Connect(function(p)
+    if ESPElements[p] then
+        ESPElements[p].container:Destroy()
+        if ESPElements[p].tracer then ESPElements[p].tracer:Destroy() end
+        ESPElements[p] = nil
+    end
+end)
+
+-- ========== TARGET PART RESOLVER ==========
+local function resolveTargetPart(char)
+    if not char then return nil end
+    local mode = Config.TargetPart
+    if mode == "Random" then
+        local pool = { "Head", "UpperTorso", "Torso", "LowerTorso", "HumanoidRootPart" }
+        local pick = pool[math.random(1, #pool)]
+        return char:FindFirstChild(pick) or char:FindFirstChild("HumanoidRootPart")
+    end
+    return char:FindFirstChild(mode) or char:FindFirstChild("HumanoidRootPart")
+end
+
+-- ========== VISIBILITY ==========
+local function isVisible(part)
+    if not Config.WallCheck then return true end
+    local char = LocalPlayer.Character
+    if not char then return false end
+    local params = RaycastParams.new()
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    params.FilterDescendantsInstances = { char, part.Parent }
+    return Workspace:Raycast(Camera.CFrame.Position, part.Position - Camera.CFrame.Position, params) == nil
+end
+
+-- ========== AIMBOT TARGET (OTIMIZADO) ==========
+local function getClosestEnemy()
+    if not Config.AimbotEnabled then return nil end
+    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    local candidates = {}
+
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl ~= LocalPlayer and pl.Character and pl.Character.Parent == Workspace then
+            local isEnemy = true
+            if pl.Team and LocalPlayer.Team and pl.Team == LocalPlayer.Team then
+                isEnemy = false
+            end
+            if isEnemy then
+                local char = pl.Character
+                local hum = char:FindFirstChildOfClass("Humanoid")
+                if hum and hum.Health > 0 then
+                    local part = resolveTargetPart(char)
+                    if part then
+                        local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+                        if onScreen then
+                            local dist = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+                            if dist <= Config.FOVRadius then
+                                table.insert(candidates, {part = part, dist = dist})
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    table.sort(candidates, function(a, b) return a.dist < b.dist end)
+
+    for _, cand in ipairs(candidates) do
+        if isVisible(cand.part) then
+            return cand.part
+        end
+    end
+    return nil
+end
+
+-- ========== MAIN LOOP (OTIMIZADO) ==========
+RunService.RenderStepped:Connect(function(dt)
+    FovCircle.Visible = Config.AimbotEnabled
+    if Config.AimbotEnabled then
+        FovCircle.Size = UDim2.new(0, Config.FOVRadius * 2, 0, Config.FOVRadius * 2)
+        local targetPart = getClosestEnemy()
+        local firing = UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+            or UserInputService:IsMouseButtonPressed(Enum.UserInputType.Touch)
+        if targetPart and firing then
+            local desired = CFrame.new(Camera.CFrame.Position, targetPart.Position)
+            Camera.CFrame = Camera.CFrame:Lerp(desired, math.clamp(Config.AimSmooth, 0.05, 1))
+        end
+    end
+
+    for player, data in pairs(ESPElements) do
+        local showESP = Config.ESPEnabled
+        local char = player.Character
+        
+        local hrp = char and char.Parent == Workspace and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        local head = char and char:FindFirstChild("Head")
+
+        local shouldHide = not showESP or not hrp or not hum or hum.Health <= 0 or not head
+            or (player.Team and LocalPlayer.Team and player.Team == LocalPlayer.Team)
+
+        local dist = 0
+        if not shouldHide then
+            dist = (Camera.CFrame.Position - hrp.Position).Magnitude
+            if dist > 300 then shouldHide = true end
+        end
+
+        if shouldHide then
+            if data.container.Visible then data.container.Visible = false end
+            if data.tracer.Visible then data.tracer.Visible = false end
+        else
+            local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+            local headPos, headOnScreen = Camera:WorldToViewportPoint(head.Position)
+
+            if onScreen and headOnScreen then
+                local height = math.clamp(2000 / dist, 30, 200)
+                local width = height * 0.6
+                
+                if not data.container.Visible then data.container.Visible = true end
+
+                data.container.Size = UDim2.new(0, width, 0, height)
+                data.container.Position = UDim2.new(0, pos.X - width / 2, 0, pos.Y - height / 2)
+                data.box.Visible = Config.ESPBox
+
+                for _, part in ipairs(data.parts) do part.BackgroundColor3 = Config.ESPColor end
+
+                local textStr = ""
+                if Config.ESPName then textStr = player.Name end
+                if Config.ESPDistance then
+                    if textStr ~= "" then textStr = textStr .. " | " end
+                    textStr = textStr .. math.floor(dist) .. "m"
+                end
+                if data.lastText ~= textStr then
+                    data.text.Text = textStr
+                    data.lastText = textStr
+                end
+                data.text.Visible = (Config.ESPName or Config.ESPDistance)
+                data.text.Size = UDim2.new(0, width * 2, 0, 20)
+                data.text.Position = UDim2.new(0, -width / 2, 0, -22)
+
+                if Config.ESPHealth then
+                    data.healthBg.Visible = true
+                    local pct = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+                    data.healthFg.Size = UDim2.new(1, 0, pct, 0)
+                    data.healthFg.Position = UDim2.new(0, 0, 1 - pct, 0)
+                    data.healthFg.BackgroundColor3 = Color3.fromRGB(255 * (1 - pct), 255 * pct, 0)
+                else
+                    data.healthBg.Visible = false
+                end
+
+                if Config.ESPTracer then
+                    data.tracer.Visible = true
+                    data.tracer.BackgroundColor3 = Config.ESPColor
+                    local origin = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                    local target = Vector2.new(pos.X, pos.Y + height / 2)
+                    local delta = target - origin
+                    local mid = (origin + target) / 2
+                    data.tracer.Size = UDim2.new(0, delta.Magnitude, 0, 1)
+                    data.tracer.Position = UDim2.new(0, mid.X, 0, mid.Y)
+                    data.tracer.Rotation = math.deg(math.atan2(delta.Y, delta.X))
+                else
+                    if data.tracer.Visible then data.tracer.Visible = false end
+                end
+            else
+                if data.container.Visible then data.container.Visible = false end
+                if data.tracer.Visible then data.tracer.Visible = false end
+            end
+        end
+    end
+end)
+
+-- ========== BYPASS MONITOR ==========
+task.spawn(function()
+    while task.wait(2) do
+        local ping = Stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+        local speed = 0
+        local char = LocalPlayer.Character
+        if char and char:FindFirstChild("HumanoidRootPart") then
+            speed = char.HumanoidRootPart.Velocity.Magnitude
+        end
+        if ping > 700 or speed > 250 then Config.BypassStatus = "BAN"
+        elseif ping > 400 or speed > 150 then Config.BypassStatus = "RISK"
+        else Config.BypassStatus = "SAFE" end
+    end
+end)
+
+-- ========== FPS COUNTER ==========
+local FpsGui = Instance.new("ScreenGui")
+FpsGui.Name = "ArsenalFps"
+FpsGui.ResetOnSpawn = false
+FpsGui.Parent = gethui() or LocalPlayer:WaitForChild("PlayerGui")
+
+local FpsLabel = Instance.new("TextLabel")
+FpsLabel.Size = UDim2.new(0, 100, 0, 30)
+FpsLabel.Position = UDim2.new(0, 10, 0, 10)
+FpsLabel.BackgroundTransparency = 1
+FpsLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+FpsLabel.Font = Enum.Font.GothamBold
+FpsLabel.TextSize = 16
+FpsLabel.TextXAlignment = Enum.TextXAlignment.Left
+FpsLabel.TextStrokeTransparency = 0
+FpsLabel.Text = "FPS: 60"
+FpsLabel.Visible = false
+FpsLabel.Parent = FpsGui
+
+local fpsCount = 60
+local lastTime = tick()
+local frames = 0
+
+RunService.RenderStepped:Connect(function()
+    frames = frames + 1
+    if tick() - lastTime >= 1 then
+        fpsCount = frames; frames = 0; lastTime = tick()
+        FpsLabel.Visible = Config.ShowFPS
+        if Config.ShowFPS then
+            FpsLabel.Text = "FPS: " .. fpsCount
+            if fpsCount >= 50 then FpsLabel.TextColor3 = Color3.fromRGB(0, 255, 0)
+            elseif fpsCount >= 30 then FpsLabel.TextColor3 = Color3.fromRGB(255, 255, 0)
+            else FpsLabel.TextColor3 = Color3.fromRGB(255, 50, 50) end
+        end
+    end
+end)
+
+-- ========== TOGGLE PANEL ("toogls") ==========
+local ToggleGui = Instance.new("ScreenGui")
+ToggleGui.Name = "toogls"
+ToggleGui.ResetOnSpawn = false
+ToggleGui.IgnoreGuiInset = true
+ToggleGui.DisplayOrder = 999
+ToggleGui.Parent = gethui() or LocalPlayer:WaitForChild("PlayerGui")
+
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Name = "ToggleBtn"
+ToggleBtn.Size = UDim2.new(0, 80, 0, 32)
+ToggleBtn.Position = UDim2.new(1, -100, 0, 80)
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+ToggleBtn.BackgroundTransparency = 0.1
+ToggleBtn.BorderSizePixel = 1
+ToggleBtn.BorderColor3 = Config.ESPColor
+ToggleBtn.Text = "toogls"
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.TextSize = 16
+ToggleBtn.Font = Enum.Font.GothamBold
+ToggleBtn.AutoButtonColor = true
+ToggleBtn.Modal = false
+ToggleBtn.Active = true
+ToggleBtn.Draggable = true
+ToggleBtn.Parent = ToggleGui
+
+ToggleBtn.MouseButton1Click:Connect(function()
+    local ok = pcall(function() Library:Toggle() end)
+    if not ok then pcall(function() Library:Close() end) end
+end)
+
+-- ========== INTERFACE (MobileLinoria) ==========
+local Window = Library:CreateWindow({
+    Title = 'Arsenal Hub | by:killer',
+    Center = true,
+    AutoShow = true,
+    TabPadding = 8,
+    MenuFadeTime = 0.2
+})
+
+Library.ShowToggleFrameInKeybinds = true
+Library.MobileButtonsSide = "Right"
+
+local Tabs = {
+    Combat = Window:AddTab('Combat'),
+    Visuals = Window:AddTab('Visuals'),
+    Bypass = Window:AddTab('Bypass'),
+    Misc = Window:AddTab('Misc')
+}
+
+-- COMBAT
+local CombatGroup = Tabs.Combat:AddLeftGroupbox('Aimbot')
+CombatGroup:AddToggle('AimToggle', { Text = 'Enable Aimbot', Default = false, Callback = function(Value) Config.AimbotEnabled = Value end })
+CombatGroup:AddToggle('WallCheckToggle', { Text = 'Wall Check', Default = true, Callback = function(Value) Config.WallCheck = Value end })
+CombatGroup:AddSlider('FovSlider', { Text = 'FOV Radius', Default = 150, Min = 50, Max = 400, Rounding = 1, Callback = function(Value) Config.FOVRadius = Value end })
+CombatGroup:AddSlider('AimSmoothSlider', { Text = 'Aim Smooth', Default = 35, Min = 5, Max = 100, Rounding = 0, Suffix = '%', Callback = function(Value) Config.AimSmooth = Value / 100 end })
+CombatGroup:AddDropdown('TargetPartDropdown', { Text = 'Target Part', Values = { 'Head', 'UpperTorso', 'Torso', 'LowerTorso', 'HumanoidRootPart', 'Random' }, Default = 'Head', Multi = false, Callback = function(Value) Config.TargetPart = Value end })
+
+local CombatNotice = Tabs.Combat:AddLeftGroupbox('Notice')
+CombatNotice:AddLabel('More features and options coming soon!')
+
+-- VISUALS
+local VisualsGroup = Tabs.Visuals:AddLeftGroupbox('ESP')
+VisualsGroup:AddToggle('EspToggle', { Text = 'Enable ESP', Default = false, Callback = function(Value) Config.ESPEnabled = Value end })
+VisualsGroup:AddToggle('EspBox', { Text = 'Box', Default = false, Callback = function(Value) Config.ESPBox = Value end })
+VisualsGroup:AddToggle('EspName', { Text = 'Name', Default = false, Callback = function(Value) Config.ESPName = Value end })
+VisualsGroup:AddToggle('EspDistance', { Text = 'Distance', Default = false, Callback = function(Value) Config.ESPDistance = Value end })
+VisualsGroup:AddToggle('EspHealth', { Text = 'Health Bar', Default = false, Callback = function(Value) Config.ESPHealth = Value end })
+VisualsGroup:AddToggle('EspTracer', { Text = 'Tracers', Default = false, Callback = function(Value) Config.ESPTracer = Value end })
+VisualsGroup:AddColorPicker('ESPColorPicker', {
+    Title = 'ESP Color',
+    Default = Color3.fromRGB(50, 150, 255),
+    Transparency = 0,
+    Callback = function(Value) 
+        Config.ESPColor = Value
+        CircleStroke.Color = Value
+        ToggleBtn.BorderColor3 = Value
+    end
+})
+
+local VisualsNotice = Tabs.Visuals:AddLeftGroupbox('Notice')
+VisualsNotice:AddLabel('More features and options coming soon!')
+
+-- BYPASS
+local BypassGroup = Tabs.Bypass:AddLeftGroupbox('Detection')
+local BypassLabel = BypassGroup:AddLabel('Status: SAFE')
+task.spawn(function()
+    while task.wait(1) do
+        BypassLabel:SetText('Status: ' .. Config.BypassStatus)
+        if Config.BypassStatus == "SAFE" then BypassLabel:SetColor(Color3.fromRGB(0, 255, 100))
+        elseif Config.BypassStatus == "RISK" then BypassLabel:SetColor(Color3.fromRGB(255, 255, 0))
+        else BypassLabel:SetColor(Color3.fromRGB(255, 50, 50)) end
+    end
+end)
+
+-- MISC
+local MiscGroup = Tabs.Misc:AddLeftGroupbox('Monitor')
+MiscGroup:AddToggle('ShowFPS', { Text = 'Show FPS', Default = false, Callback = function(Value) Config.ShowFPS = Value end })
+
+local MiscActions = Tabs.Misc:AddLeftGroupbox('Actions')
+MiscActions:AddButton('Close Panel (X)', function() Library:Close() end)
+MiscActions:AddButton('Unload Script', function()
+    Library:Unload()
+    if FovGui then FovGui:Destroy() end
+    if ESPGui then ESPGui:Destroy() end
+    if FpsGui then FpsGui:Destroy() end
+    if ToggleGui then ToggleGui:Destroy() end
+    getgenv().ArsenalMobileV3 = nil
+end)
+
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({})
+ThemeManager:SetFolder('ArsenalHub')
+SaveManager:SetFolder('ArsenalHub/Configs')
+SaveManager:BuildConfigSection(Tabs.Misc)
+ThemeManager:ApplyToTab(Tabs.Misc)
+
+-- Salva a referência para limpar ao re-executar
+getgenv().ArsenalMobileV3 = ToggleGui
